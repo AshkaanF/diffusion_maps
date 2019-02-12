@@ -2,7 +2,7 @@
 ## let's make a quick script for the
 ## diffusion mapping process
 ##
-setwd('~/Dropbox (Personal)/2019_diffusion_maps/')
+setwd('path/to/directory')
 
 ## load functions we'll need
 source('./R/accessory_functions.R')

@@ -21,10 +21,10 @@ m <- read.csv('./data/hmp_species.csv', header = T, row.names = 1)
 ##
 ## get the normalized laplacian from the feature table
 Lij <- m %>%
-  norm.mat() %>%                ## normalize matrix
-  get.euc() %>%                 ## get euclidean similarities
-  threshold(., top_k = 25) %>%  ## threshold the distance matrix
-  get.laplac()                  ## calculate normalized laplacian
+  norm.mat() %>%                                      ## normalize matrix
+  get.euc(., alt = 'euclidean', n.threads = 3) %>%    ## get euclidean similarities
+  threshold(., top_k = 20) %>%                        ## threshold the distance matrix
+  get.laplac()                                        ## calculate normalized laplacian
 
 ## calculate eigenvals/vecs
 eig <- Lij %>%
@@ -41,8 +41,8 @@ evc <- eig %$%
   round(., 10)
 
 ## get eigenvectors for 2 smallest non-zero evs
-dim.1 <- evc[, which(order(evl, decreasing = F) == 2)]
-dim.2 <- evc[, which(order(evl, decreasing = F) == 3)]
+dim.1 <- evc[, rank(evl, ties.method = 'random') == 2]
+dim.2 <- evc[, rank(evl, ties.method = 'random') == 3]
 
 ## append to data
 meta$dim.1 <- dim.1

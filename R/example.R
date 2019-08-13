@@ -18,7 +18,7 @@ meta <- read.csv('./data/hmp_map.csv', header = T, row.names = 1, colClasses = '
 m <- read.csv('./data/hmp_species.csv', header = T, row.names = 1)
 
 ## drop samples that are identical, or else affinity matrix will contain Inf
-m <- m[-which(is.infinite(eucl), arr.ind = T), ]
+m <- m[!duplicated(m), ]
 
 ##
 ## diffusion map process starts here
@@ -41,8 +41,10 @@ Lij <- eucl %>%
 Sys.time() - st.2
 
 ## calculate eigenvals/vecs
+st.3 <- Sys.time()
 eig <- Lij %>% eigen()
-  
+Sys.time() - st.3
+
 ## get eigenvalues
 evl <- eig %$%
   values %>%
@@ -83,7 +85,7 @@ dims$env_1 <- gsub('_', ' ', dims$env_1)
 ##
 ## plot
 ##
-ggplot(dims, aes(x = dim.1, y = dim.2, fill = env_1)) +
+ggplot(dims, aes(x = dim.1, y = dim.2, fill = env_2)) +
   theme_classic() +
   xlab('Dimension 1') +
   ylab('Dimension 2') +
@@ -95,7 +97,7 @@ ggplot(dims, aes(x = dim.1, y = dim.2, fill = env_1)) +
                         brewer.pal(n = 11, name = 'Spectral'))(
                           length(
                             unique(
-                              dims$env_1))), 
+                              dims$env_2))), 
                     name = NULL) +
   theme(axis.title = element_text(size = 11, colour = '#000000'),
         axis.text = element_text(size = 8, colour = '#000000'),

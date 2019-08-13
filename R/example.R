@@ -1,71 +1,109 @@
 ##
 ## let's make a quick script for the
 ## diffusion mapping process
+## - AK Fahimipour
 ##
 setwd('path/to/directory')
 
 ## load functions we'll need
 source('./R/accessory_functions.R')
 
-##---
-## generate or load a matrix for testing
-##---
+##
+## load data
+##
 # load the mapping file from the human microbiome project
 meta <- read.csv('./data/hmp_map.csv', header = T, row.names = 1, colClasses = 'character')
 
 ## load hmp species-level feature array
 m <- read.csv('./data/hmp_species.csv', header = T, row.names = 1)
 
+## drop samples that are identical, or else affinity matrix will contain Inf
+m <- m[-which(is.infinite(eucl), arr.ind = T), ]
+
+##
+## diffusion map process starts here
+##
+## calculate similarities
+st.1 <- Sys.time()
+eucl <- m %>%
+  norm.mat() %>%
+  get.euc(., n.threads = 1)
+Sys.time() - st.1
+
 ##
 ## NOTE: m is a sample x feature array
 ##
 ## get the normalized laplacian from the feature table
-Lij <- m %>%
-  norm.mat() %>%                                      ## normalize matrix
-  get.euc(., alt = 'euclidean', n.threads = 3) %>%    ## get euclidean similarities
-  threshold(., top_k = 20) %>%                        ## threshold the distance matrix
+st.2 <- Sys.time()
+Lij <- eucl %>%
+  threshold(., top_k = 10) %>%                        ## threshold the distance matrix
   get.laplac()                                        ## calculate normalized laplacian
+Sys.time() - st.2
 
 ## calculate eigenvals/vecs
-eig <- Lij %>%
-  eigen()
+eig <- Lij %>% eigen()
   
 ## get eigenvalues
 evl <- eig %$%
   values %>%
-  round(., 10)
+  round(., 8)
 
 ## get eigenvectors
 evc <- eig %$%
   vectors %>%
-  round(., 10)
+  round(., 8)
 
-## get eigenvectors for 2 smallest non-zero evs
-dim.1 <- evc[, rank(evl, ties.method = 'random') == 2]
-dim.2 <- evc[, rank(evl, ties.method = 'random') == 3]
+## how many eigenvectors do you want to extract?
+neig <- 32
+neig <- neig + 1
 
-## append to data
-meta$dim.1 <- dim.1
-meta$dim.2 <- dim.2
+## get eigenvectors for neig smallest non-zero eigenvalues
+for(d in 1:neig){
+  
+  ## assign the right eigenvector to the dim name
+  assign(paste('dim', d, sep = '.'), Re(evc[, rank(evl, ties.method = 'random') == (d + 1)]))
+  
+}
+
+## merge in array
+dims <- do.call(mapply, c(FUN = cbind, mget(paste0("dim.", 1:(neig - 1))))) %>%
+  t() %>%
+  as.data.frame()
+
+## add labels
+colnames(dims) <- paste(paste('dim', 1:(neig - 1), sep = '.'))
+rownames(dims) <- rownames(Lij)
+
+## append metadata
+dims <- cbind(meta[rownames(dims), ], dims)
+
+## clean labels
+dims$env_1 <- gsub('_', ' ', dims$env_1)
 
 ##
 ## plot
 ##
-ggplot(meta, aes(x = dim.1, y = dim.2, fill = env_2)) +
+ggplot(dims, aes(x = dim.1, y = dim.2, fill = env_1)) +
   theme_classic() +
   xlab('Dimension 1') +
   ylab('Dimension 2') +
   geom_hline(yintercept = 0, linetype = 1, size = 0.5, colour = '#959595') +
   geom_vline(xintercept = 0, linetype = 1, size = 0.5, colour = '#959595') +
-  geom_point(shape = 21, alpha = 0.5, size = 2) +
-  scale_fill_manual(values = brewer.pal(n = 4, name = 'RdYlBu'), name = NULL) +
+  geom_point(shape = 21, alpha = 0.65, size = 1.2) +
+  scale_fill_manual(values = 
+                      colorRampPalette(
+                        brewer.pal(n = 11, name = 'Spectral'))(
+                          length(
+                            unique(
+                              dims$env_1))), 
+                    name = NULL) +
   theme(axis.title = element_text(size = 11, colour = '#000000'),
         axis.text = element_text(size = 8, colour = '#000000'),
         legend.position = c(1, 0),
         legend.background = element_blank(),
         legend.justification = c(1, 0),
         legend.key.width = unit(0.2, 'cm'),
-        legend.key.height = unit(0.5, 'cm'), 
+        legend.key.height = unit(0.2, 'cm'), 
         legend.text = element_text(size = 5),
         legend.text.align = 0,
         legend.title = element_text(size = 9))

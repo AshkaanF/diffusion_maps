@@ -1,6 +1,6 @@
 # Diffusion Mapping
 #### A demo inspired by the forthcoming paper by Fahimipour and Gross
-Contains metabolic networks and R scripts that quickly recreate the diffusion mapping procedure, using a subset of 100 genome-scale metabolic networks. Metabolic models were generated from NCBI accessions using the [CarveMe](https://github.com/cdanielmachado/carveme) software.
+Contains metabolic networks and R scripts that quickly recreate the diffusion mapping procedure, using a subset of 100 genome-scale metabolic networks. Metabolic models were generated from NCBI accessions using the [CarveMe](https://github.com/cdanielmachado/carveme) software. Needed R libraries can be installed on a typical laptop in ~ 1 minute. This demo will run on a typical machine in less than one minute.
 
 #### Demo
 

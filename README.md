@@ -1,128 +1,138 @@
-# Diffusion map
-#### A test inspired by the recent paper by [Barter and Gross, 2019](https://royalsocietypublishing.org/doi/full/10.1098/rspa.2018.0615)
-Contains R scripts that recreate diffusion map using a subset of the [Human Microbiome Project 2](https://portal.hmpdacc.org/) metagenomic species-level characterization. Species were quantified using the marker gene-based [MetaPhlAn2](https://bitbucket.org/biobakery/metaphlan2) software.
+# Diffusion Mapping
+#### A demo inspired by the forthcoming paper by Fahimipour and Gross
+Contains metabolic networks and R scripts that quickly recreate the diffusion mapping procedure, using a subset of 100 genome-scale metabolic networks. Metabolic models were generated from NCBI accessions using the [CarveMe](https://github.com/cdanielmachado/carveme) software.
 
-#### Example
+#### Demo
 
 ```R
-##
-## let's make a quick script for the
-## diffusion mapping process
-## - AK Fahimipour
-##
-setwd('path/to/directory')
+##---
+## This script demonstrates the diffusion map procedure for
+## a subset of the metabolic networks analyzed by
+## Fahimipour and Gross (in review).
+##---
+## load libraries
+library(dplyr)
+library(magrittr)
+library(reshape2)
+library(ggplot2)
 
-## load functions we'll need
-source('./R/accessory_functions.R')
+## set working directory
+setwd('~/Dropbox/2019_bacterial_niche_results/submissions/ncom_v01/reproducible_analysis/')
 
-##
-## load data
-##
-# load the mapping file from the human microbiome project
-meta <- read.csv('./data/hmp_map.csv', header = T, row.names = 1, colClasses = 'character')
+## point to the subdir containing metabolic network edge lists
+net_loc <- './data'
 
-## load hmp species-level feature array
-m <- read.csv('./data/hmp_species.csv', header = T, row.names = 1)
+## get a list of files
+file_list <- list.files(path = net_loc, full.names = T)
 
-## drop samples that are identical, or else affinity matrix will contain Inf
-m <- m[!duplicated(m), ]
+## load all the metabolic networks into a list
+nets <- list()
 
-##
-## diffusion map process starts here
-##
-## calculate similarities
-st.1 <- Sys.time()
-eucl <- m %>%
-  norm.mat() %>%
-  get.euc(., n.threads = 1)
-Sys.time() - st.1
-
-##
-## NOTE: m is a sample x feature array
-##
-## get the normalized laplacian from the feature table
-st.2 <- Sys.time()
-Lij <- eucl %>%
-  threshold(., top_k = 10) %>%                        ## threshold the distance matrix
-  get.laplac()                                        ## calculate normalized laplacian
-Sys.time() - st.2
-
-## calculate eigenvals/vecs
-st.3 <- Sys.time()
-eig <- Lij %>% eigen()
-Sys.time() - st.3
-
-## get eigenvalues
-evl <- eig %$%
-  values %>%
-  round(., 8)
-
-## get eigenvectors
-evc <- eig %$%
-  vectors %>%
-  round(., 8)
-
-## how many eigenvectors do you want to extract?
-neig <- 32
-neig <- neig + 1
-
-## get eigenvectors for neig smallest non-zero eigenvalues
-for(d in 1:neig){
+## loop through files
+for(k in 1:length(file_list)){
   
-  ## assign the right eigenvector to the dim name
-  assign(paste('dim', d, sep = '.'), Re(evc[, rank(evl, ties.method = 'random') == (d + 1)]))
+  ## read the network
+  temp <- read.table(file_list[k], sep = '\t', header = T)
+  
+  ## store in our list
+  nets[[k]] <- temp
   
 }
 
+## bind our edge lists together
+all_nets <- do.call('rbind', nets)
+
+## retain the reaction and species columns
+all_nets <- all_nets[, names(all_nets) %in% c('rxn', 'taxon')]
+
+## add a dummy unity vector for casting into wide format
+all_nets$dummy <- rep(1)
+
+## cast into wide form
+m <- dcast(all_nets, formula = taxon ~ rxn, value.var = 'dummy', fill = 0) %>%
+  column_to_rownames(., var = 'taxon') %>%
+  as.matrix()
+
+##
+## end data preprocessing
+##
+
+
+##---
+## diffusion mapping starts here
+##---
+## load our defined functions for diffusion map steps
+source('./R/accessory_functions.R')
+
+## set seed
+set.seed(777)
+
+## normalize
+nm <- m %>% norm.mat()
+
+## make affinity matrix
+aff <- nm %>%
+  get.euc(., n.threads = 1) %>% 
+  threshold(., top_k = 10)
+
+## compute laplacian
+Lij <- aff %>% 
+  get.laplac()
+
+## smallest keig vectors
+eig <- eigen(Lij)
+
+## get eigenvalues
+evl <- eig$values %>%
+  Re() %>%
+  round(., 10)
+
+## get eigenvectors
+evc <- eig$vectors %>%
+  Re() %>%
+  round(., 10)
+
+## create objects containing diffusion variables
+for(d in 1:length(evl)){
+  assign(paste('dim', d, sep = '_'),
+         Re(evc[, rank(evl) == (d + 1)])
+  )
+}
+
+## specify number of variables you want to retain
+k_eig <- 10
+
 ## merge in array
-dims <- do.call(mapply, c(FUN = cbind, mget(paste0("dim.", 1:(neig - 1))))) %>%
+dat <- do.call(mapply, c(FUN = cbind, mget(paste0("dim_", 1:(k_eig))))) %>%
   t() %>%
   as.data.frame()
 
 ## add labels
-colnames(dims) <- paste(paste('dim', 1:(neig - 1), sep = '.'))
-rownames(dims) <- rownames(Lij)
-
-## append metadata
-dims <- cbind(meta[rownames(dims), ], dims)
-
-## clean labels
-dims$env_1 <- gsub('_', ' ', dims$env_1)
+colnames(dat) <- paste(paste('dim', 1:(k_eig), sep = '_'))
+rownames(dat) <- rownames(Lij)
 
 ##
-## plot
+## you now have a data frame called 'dat' that contains
+## the first 10 diffusion variables describing major
+## variation in this subset of 100 genomes.
+## We can explore these quickly by visualizing
+## the first two dimensions as new coordinates.
 ##
-ggplot(dims, aes(x = dim.1, y = dim.2, fill = env_2)) +
+ggplot(dat, aes(x = dim_1, y = dim_2, fill = dim_1)) +
   theme_classic() +
-  xlab('Dimension 1') +
-  ylab('Dimension 2') +
-  geom_hline(yintercept = 0, linetype = 1, size = 0.5, colour = '#959595') +
-  geom_vline(xintercept = 0, linetype = 1, size = 0.5, colour = '#959595') +
-  geom_point(shape = 21, alpha = 0.65, size = 1.2) +
-  scale_fill_manual(values = 
-                      colorRampPalette(
-                        brewer.pal(n = 11, name = 'Spectral'))(
-                          length(
-                            unique(
-                              dims$env_2))), 
-                    name = NULL) +
-  theme(axis.title = element_text(size = 11, colour = '#000000'),
-        axis.text = element_text(size = 8, colour = '#000000'),
-        legend.position = c(1, 0),
-        legend.background = element_blank(),
-        legend.justification = c(1, 0),
-        legend.key.width = unit(0.2, 'cm'),
-        legend.key.height = unit(0.2, 'cm'), 
-        legend.text = element_text(size = 5),
-        legend.text.align = 0,
-        legend.title = element_text(size = 9))
+  xlab('Variable 1') +
+  ylab('Variable 2') +
+  geom_hline(yintercept = 0, size = 0.25, colour = '#bdbdbd') +
+  geom_vline(xintercept = 0, size = 0.25, colour = '#bdbdbd') +
+  geom_point(shape = 21, size = 1) +
+  scale_fill_gradientn(colours = brewer.pal(11, 'RdBu'), guide = F) +
+  theme(aspect.ratio = 1)
 
 ```
 
-The eigenvectors corresponding to the 2 smallest non-zero eigenvalues provide new coordinates with which to visualize differences between HMP sample. This shows that the HMP metagenomes lie near a low dimensional manifold, and are roughly ordered from oral, to skin, gut, and urogenital microbial communities in terms of taxonomic profiles.
+The eigenvectors corresponding to the 2 smallest non-zero eigenvalues provide new coordinates with which to visualize differences between our metabolic networks.
 
-
-![HMP Example](figures/hmp.png)
+![Example Figure](figures/demo.png)
 
 
 

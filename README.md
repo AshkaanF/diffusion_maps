@@ -17,7 +17,7 @@ library(reshape2)
 library(ggplot2)
 
 ## set working directory
-setwd('~/Dropbox/2019_bacterial_niche_results/submissions/ncom_v01/reproducible_analysis/')
+setwd('/path/to/this/directory')
 
 ## point to the subdir containing metabolic network edge lists
 net_loc <- './data'
